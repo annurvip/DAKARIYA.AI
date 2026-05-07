@@ -1,0 +1,181 @@
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+const app = express();
+app.use(express.json());
+
+/* ======================
+   IN-MEMORY DATABASE
+====================== */
+let users = [];
+let events = [];
+
+/* ======================
+   FRONTEND UI (SINGLE FILE)
+====================== */
+const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>DAKARIYA AI</title>
+
+<style>
+body{margin:0;font-family:Arial;background:#0b0f1a;color:white}
+.header{padding:15px;background:#111827;text-align:center}
+.container{padding:20px}
+.card{background:#111827;padding:15px;margin:10px;border-radius:10px}
+input,button{padding:10px;margin:5px}
+button{background:#38bdf8;border:none;cursor:pointer}
+</style>
+
+</head>
+<body>
+
+<div class="header">
+<h2>DAKARIYA AI SOC</h2>
+</div>
+
+<div class="container">
+
+<div class="card">
+<h3>Register</h3>
+<input id="email" placeholder="email">
+<input id="password" placeholder="password">
+<button onclick="register()">Register</button>
+</div>
+
+<div class="card">
+<h3>Login</h3>
+<input id="lemail" placeholder="email">
+<input id="lpass" placeholder="password">
+<button onclick="login()">Login</button>
+</div>
+
+<div class="card">
+<h3>Simulate Attack Event</h3>
+<button onclick="sendEvent()">Send Event</button>
+</div>
+
+<div class="card">
+<h3>Live SOC Feed</h3>
+<div id="feed"></div>
+</div>
+
+</div>
+
+<script>
+const API = "";
+
+async function register(){
+  await fetch("/register",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      email:email.value,
+      password:password.value
+    })
+  });
+  alert("Registered");
+}
+
+async function login(){
+  const res = await fetch("/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      email:lemail.value,
+      password:lpass.value
+    })
+  });
+
+  const data = await res.json();
+  alert("Welcome "+data.user.email);
+}
+
+async function sendEvent(){
+  await fetch("/event",{method:"POST"});
+  load();
+}
+
+async function load(){
+  const res = await fetch("/events");
+  const data = await res.json();
+
+  feed.innerHTML = data.map(e=>`
+    <div style="padding:8px;margin:5px;background:#1f2937;border-left:4px solid \${e.risk>70?'red':e.risk>40?'orange':'green'}">
+      Risk: \${e.risk}
+    </div>
+  `).join("");
+}
+
+setInterval(load,2000);
+</script>
+
+</body>
+</html>
+`;
+
+/* ======================
+   ROUTES
+====================== */
+
+app.get("/", (req,res)=>{
+  res.send(html);
+});
+
+/* REGISTER */
+app.post("/register", async (req,res)=>{
+  const hashed = await bcrypt.hash(req.body.password || "1234",10);
+
+  users.push({
+    id: users.length+1,
+    email: req.body.email,
+    password: hashed
+  });
+
+  res.json({msg:"user created"});
+});
+
+/* LOGIN */
+app.post("/login", async (req,res)=>{
+  const user = users.find(u=>u.email===req.body.email);
+
+  if(!user) return res.json({msg:"not found"});
+
+  const ok = await bcrypt.compare(req.body.password,user.password);
+
+  if(!ok) return res.json({msg:"wrong password"});
+
+  const token = jwt.sign({id:user.id},"SECRET");
+
+  res.json({token,user});
+});
+
+/* RISK ENGINE */
+function risk(){
+  return Math.floor(Math.random()*100);
+}
+
+/* EVENT */
+app.post("/event",(req,res)=>{
+
+  events.unshift({
+    risk: risk(),
+    time: new Date()
+  });
+
+  if(events.length>20) events.pop();
+
+  res.json({ok:true});
+});
+
+/* EVENTS */
+app.get("/events",(req,res)=>{
+  res.json(events);
+});
+
+/* START */
+app.listen(5000,()=>{
+  console.log("DAKARIYA AI RUNNING 🚀");
+});
